@@ -1,0 +1,13 @@
+venv/ .env/ env/ virtualenv/
+
+pycache/ *.py[cod] *$py.class
+
+.idea/ *.iml
+
+*.egg *.egg-info/ dist/ build/ .eggs/ lib/ lib64/ pip-wheel-metadata/
+
+*.log .log.*.bak *.swp *~
+
+Thumbs.db Desktop.ini
+
+.env *.env
