@@ -7,7 +7,7 @@ import hashlib
 from jwt import InvalidTokenError, ExpiredSignatureError, InvalidSignatureError
 
 KEY_SIZE = 32 # bytes
-TOKEN_EXPIRATION_MINUTES = 1
+TOKEN_EXPIRATION_SECONDS = 1
 CREDENTIALS_FILE = "credentials.json"
 HMAC_KEY_FILE = "hmac.pem"
 RSA_PUB_KEY_FILE = "rsa_public.pem" 
@@ -67,13 +67,12 @@ def generate_jwt(user: Credentials, cenario= "RSA") -> str:
     else:
         with open(HMAC_KEY_FILE, "r") as f:
             signing_key = f.read()
-        signing_key = HMAC_KEY_FILE
         algorithm = HMAC_ALGORITHM
 
     payload = {
         "name": user.name,
-        "expiration": str(datetime.datetime.now() + datetime.timedelta(minutes=TOKEN_EXPIRATION_MINUTES)),
-        "issued": str(datetime.datetime.now())
+        "exp": datetime.datetime.now() + datetime.timedelta(seconds=TOKEN_EXPIRATION_SECONDS),
+        "iat": datetime.datetime.now()
     }
 
     token = jwt.encode(payload, signing_key, algorithm=algorithm)
@@ -91,10 +90,8 @@ def api_autenticacao(username: str, password: str, cenario="RSA") -> str | None:
         return None
     
     print("User credentials found")
-    if cenario == "RSA":
-        token = generate_jwt(user, "RSA")
-    else:
-        token = generate_jwt(user, "HMAC")
+
+    token = generate_jwt(user, cenario)
     save_user_token(user.name, token)
     return token
 
@@ -130,31 +127,24 @@ api_autenticacao(hashlib.sha256(em_claro.name.encode()).hexdigest() , hashlib.sh
 
 test_username = hashlib.sha256(em_claro.name.encode()).hexdigest()
 test_password = hashlib.sha256(em_claro.pwd.encode()).hexdigest()
-# Scenario 1: HMAC
-print("\nTesting HMAC scenario:")
+
+print("\nTeste HMAC :")
 hmac_token = api_autenticacao(test_username, test_password, "HMAC")
 print("Generated HMAC token:", hmac_token)
-import time
-# time.sleep(10)
 hmac_result = api_protegida(hmac_token, "HMAC")
-print("Protected API result:", hmac_result)
+print("API_PROTEGIDA:", hmac_result)
 
-# Scenario 2: RSA
-print("\nTesting RSA scenario:")
+print("\nTeste RSA :")
 rsa_token = api_autenticacao(test_username, test_password, "RSA")
 print("Generated RSA token:", rsa_token)
 rsa_result = api_protegida(rsa_token, "RSA")
-print("Protected API result:", rsa_result)
-
-# Test invalid token
-print("\nTesting invalid token:")
-invalid_token = "invalidçlkçlkhere"
-invalid_result = api_protegida(invalid_token, "RSA")
-print("Invalid token result:", invalid_result)
+print("API_PROTEGIDA:", rsa_result)
 
 
-
-
-protegido = load_user_by_name("9e77404183826933ff4ad68a71511f85324835b2c8433dc6b26e614df4290bdf")
-api_autenticacao(protegido.name ,  protegido.pwd)
-hashlib.sha256(protegido.pwd.encode()).hexdigest()
+print("\nTeste RSA Expired token :")
+rsa_token = api_autenticacao(test_username, test_password, "RSA")
+print("Generated RSA token:", rsa_token)
+import time
+time.sleep(TOKEN_EXPIRATION_SECONDS+0.1)
+rsa_result = api_protegida(rsa_token, "RSA")
+print("API_PROTEGIDA:", rsa_result)
