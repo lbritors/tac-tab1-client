@@ -7,7 +7,7 @@ import hashlib
 from jwt import InvalidTokenError, ExpiredSignatureError, InvalidSignatureError
 
 KEY_SIZE = 32 # bytes
-TOKEN_EXPIRATION_MINUTES = 120
+TOKEN_EXPIRATION_MINUTES = 1
 CREDENTIALS_FILE = "credentials.json"
 HMAC_KEY_FILE = "hmac.pem"
 RSA_PUB_KEY_FILE = "rsa_public.pem" 
@@ -63,12 +63,12 @@ def generate_jwt(user: Credentials, cenario= "RSA") -> str:
     if cenario == "RSA":
         with open(RSA_PRIV_KEY_FILE, "r") as f:
             signing_key = f.read()
-        algorithm = "RS256"
+        algorithm = RSA_ALGORITHM
     else:
         with open(HMAC_KEY_FILE, "r") as f:
             signing_key = f.read()
         signing_key = HMAC_KEY_FILE
-        algorithm = "HS256"
+        algorithm = HMAC_ALGORITHM
 
     payload = {
         "name": user.name,
@@ -105,11 +105,11 @@ def load_key(filename):
 def api_protegida(token: str, cenario="RSA") -> str:
     try:
         if cenario == "RSA":
-            key = load_key(HMAC_KEY_FILE)
-            algorithm = HMAC_ALGORITHM
-        else:
             key = load_key(RSA_PUB_KEY_FILE)
             algorithm = RSA_ALGORITHM
+        else:
+            key = load_key(HMAC_KEY_FILE)
+            algorithm = HMAC_ALGORITHM
 
         # Decode and verify token
         payload = jwt.decode(token, key, algorithms=[algorithm])
@@ -134,6 +134,8 @@ test_password = hashlib.sha256(em_claro.pwd.encode()).hexdigest()
 print("\nTesting HMAC scenario:")
 hmac_token = api_autenticacao(test_username, test_password, "HMAC")
 print("Generated HMAC token:", hmac_token)
+import time
+# time.sleep(10)
 hmac_result = api_protegida(hmac_token, "HMAC")
 print("Protected API result:", hmac_result)
 
@@ -146,7 +148,7 @@ print("Protected API result:", rsa_result)
 
 # Test invalid token
 print("\nTesting invalid token:")
-invalid_token = "invalid.token.here"
+invalid_token = "invalidçlkçlkhere"
 invalid_result = api_protegida(invalid_token, "RSA")
 print("Invalid token result:", invalid_result)
 
