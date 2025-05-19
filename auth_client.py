@@ -1,8 +1,11 @@
 import getpass
+import json
 import os
 
 import aiohttp
 import asyncio
+
+from cryptography.hazmat.primitives.keywrap import aes_key_wrap_with_padding
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -62,6 +65,22 @@ async def post_message(session, token, scenario, api_url = API_URL):
                 print(f"Erro ao criar mensagem: {response.status} - {text}")
     except aiohttp.ClientError as error:
         print(f"Erro ao conectar à API: {error}")
+
+async def get_messages(session, token, scenario, api_url = API_URL):
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Auth-Scenario": scenario
+    }
+    try:
+        async with session.get(api_url, headers=headers, ssl=False) as response:
+            if response.status == 200:
+                messages = json.dumps(await response.json(), indent=2)
+                print("Mensagens recuperadoas", messages)
+            else:
+                text = await response.text()
+                print(f"Erro ao recuperar mensagens : {response.status} - {text}")
+    except aiohttp.ClientError as e:
+        print(f"Erro ao conectar à API: {e}")
 
 
 
