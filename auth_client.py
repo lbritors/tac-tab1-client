@@ -7,6 +7,7 @@ async def authenticate():
     auth_url = ""
     username = input("Digite seu login: ")
     password = getpass.getpass("Digite sua senha: ")
+    scenario = input("Escolha o a forma de autenticação [hmac/rsa]: ").lower()
 
     data = {
         "username": username,
