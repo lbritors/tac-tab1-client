@@ -95,5 +95,31 @@ async def handle_post(request):
             return web.json_response({"error": f"Erro no banco de dados: {str(e)}"}, status=500)
 
 
+async def handle_get(request):
+    token = get_token(request)
+    scenario = request.headers.get("X-Auth-Scenario", "hmac")
+    if schenario not in ["rsa", "hmac"]:
+        return web.json_response({"error": "Cenário inválido (user hmac ou rsa)"}, status=400)
+    if not token:
+        return web.json_response({"error": "Token é necessário"},status=401)
+    user_id, error = validate_token(token, scenario)
+    if not user_id:
+        return web.json_response({"error": error or "Token inválido"}, status=401)
 
+    async with aiosqlite.connect(API_DB_PATH) as db:
+        try:
+            async with db.execute("""
+                SELECT * FROM messages WHERE user_id = ?
+            """, (user_id,)) as cursor:
+                messages = [
+                    {
+                        "id" : row[0],
+                        "user_id" : row[1],
+                        "content" : row[2],
+                        "created_at" : row[3]
+                    } async for row in cursor
+                ]
+            return web.json_response({"messages": messages}, status=200)
+        except aiosqlite.Error as e:
+            return web.json_response({"error": f"Erro no banco de dados: {str(e)}"}, status=500)
 
