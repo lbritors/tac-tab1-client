@@ -23,7 +23,7 @@ HMAC_SECRET = os.getenv("HMAC_SECRET")
 load_dotenv()
 
 async def init_db():
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(API_DB_PATH) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,3 +55,45 @@ def get_token(request):
     if auth_header and auth_header.startswith("Bearer "):
         return auth_header.split(" ")[1]
     return None
+
+
+async def handle_post(request):
+    token = get_token(request)
+    scenario = request.headers.get("X-Auth-Scenario", "hmac")
+    if scenario not in ["hmac", "rsa"]:
+        return web.json_response({"error": "Cenário inválido (use hmac ou rsa)"}, status=400)
+    if not token:
+        return web.json_response({"error": "Token é necessário"}, status=401)
+
+    user_id, error = validate_token(token, scenario)
+    if not user_id:
+        return web.json_response({"error": error or "Token inválido"}, status=401)
+
+    try:
+        data = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "JSON inválido"}, status=400)
+
+    content = data.get("content")
+    if not isinstance(content,str) or not content.strip():
+        return web.json_response({"error": "Conteúdo deve ser uma string não vazia"}, status=400)
+
+    async with aiosqlite.connect(API_DB_PATH) as db:
+        try:
+            async with db.execute("""
+                INSERT INTO messages (user_id, content) VALUES(?, ?)
+            """, (user_id, content)) as cursor:
+                await db.commit()
+                message_id = cursor.lastrowid
+            return web.json_response({
+                "id": message_id,
+                "user_id": user_id,
+                "content": content,
+                "created_at": datetime.datetime.utcnow().isoformat()
+            }, status=201)
+        except aiosqlite.Error as e:
+            return web.json_response({"error": f"Erro no banco de dados: {str(e)}"}, status=500)
+
+
+
+
