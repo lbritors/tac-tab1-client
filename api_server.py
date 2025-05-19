@@ -9,7 +9,6 @@ import datetime
 import urllib.parse
 from aiohttp import web
 import aiosqlite
-import requests
 from cryptography.hazmat.primitives import serialization
 
 from auth_server import DB_PATH, RSA_PUB_KEY_FILE
@@ -98,7 +97,7 @@ async def handle_post(request):
 async def handle_get(request):
     token = get_token(request)
     scenario = request.headers.get("X-Auth-Scenario", "hmac")
-    if schenario not in ["rsa", "hmac"]:
+    if scenario not in ["rsa", "hmac"]:
         return web.json_response({"error": "Cenário inválido (user hmac ou rsa)"}, status=400)
     if not token:
         return web.json_response({"error": "Token é necessário"},status=401)
