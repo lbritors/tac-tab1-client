@@ -2,8 +2,11 @@
 import asyncio
 import json
 import os
+import time
+
 import jwt
 import datetime
+from datetime import timezone, timedelta
 import ssl
 import base64
 from aiohttp import web
@@ -14,18 +17,21 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 from dotenv import load_dotenv
 
+
+
 load_dotenv()
 
 PORT = 5001
 KEY_SIZE = 32 # bytes
 TOKEN_EXPIRATION_SECONDS = 3600 #1 hora
 DB_PATH = "auth_database.db"
-HMAC_KEY_FILE = "../hmac.pem"
+HMAC_KEY_FILE = "./hmac.pem"
 CREDENTIALS_FILE = "credentials.json"
 RSA_PUB_KEY_FILE = "rsa_public.pem"
 RSA_PRIV_KEY_FILE = "rsa_private.pem"
 RSA_ALGORITHM = "RS256"
 HMAC_ALGORITHM = "HS256"
+HMAC_SECRET = os.getenv("HMAC_SECRET")
 
 
 async def init_db():
@@ -60,7 +66,7 @@ def generate_rsa_keys():
             )
 
         )
-def load_private_key:
+def load_private_key():
     with open(RSA_PRIV_KEY_FILE, "rb") as f:
         return serialization.load_pem_private_key(f.read(), password=None)
 
@@ -88,95 +94,52 @@ def verify_password(password, hash_pass):
     key = base64.b64encode(kdf.derive(password.encode())).decode()
     return key == key_b64
 
-def load_user_by_name(name: str) -> Credentials | None:
-    if not os.path.exists(CREDENTIALS_FILE):
-        raise  Exception("credentials file missing, should be `credentials.json`")
+async def handle_login(request):
+    if request.method == "POST":
+        try:
+            data = await request.json()
+        except json.JSONDecodeError:
+            return web.json_response({"error": "JSON inválido"}, status=400)
 
-    with open(CREDENTIALS_FILE, "r") as f:
-        users = json.load(f)
-    for user in users:
-        if user["name"] == name:
-            return Credentials.from_dict(user)
-    return None
-load_user_by_name("ningning").name
-#%%
-def save_user_token(name: str, token: str):
-    with open(CREDENTIALS_FILE, "r") as f:
-        users = json.load(f)
-    for user in users:
-        if user["name"] == name:
-            user["tokens"].append(token)
-            break
-    with open(CREDENTIALS_FILE, "w") as f:
-        json.dump(users, f, indent=4)
+        username = data.get("username")
+        password = data.get("password")
+        scenario = data.get("scenario", "rsa").lower()
 
-def generate_jwt(user: Credentials, cenario= "RSA") -> str:
-    print('cenario ', cenario)
-    if cenario == "RSA":
-        with open(RSA_PRIV_KEY_FILE, "r") as f:
-            signing_key = f.read()
-        algorithm = RSA_ALGORITHM
-    else:
-        with open(HMAC_KEY_FILE, "r") as f:
-            signing_key = f.read()
-        algorithm = HMAC_ALGORITHM
+        if scenario not in ["hmac", "rsa"]:
+            return web.json_response({"error": "Cenário inválido"}, status=400)
+        if not username or not password:
+            return web.json_response({"error": "Autenticação inválida"}, status=400)
+        async with aiosqlite.connect(DB_PATH) as db:
+            try:
+                async with db.execute("""
+                    SELECT password_hash FROM users WHERE username = ?
+                """, (username,)) as cursor:
+                    result = await cursor.fetchone()
+                    if result and verify_password(result[0], password):
+                        data = {
+                            "exp": datetime.datetime.now() + datetime.timedelta(seconds=TOKEN_EXPIRATION_SECONDS),
+                            "sub": username,
+                            "iac": datetime.datetime.now()
+                        }
+                        if scenario == "hmac":
+                            token = jwt.encode(data, HMAC_SECRET, algorithm="HS256")
+                        else:
+                            private_key = load_private_key()
+                            token = jwt.encode(data, private_key, algorithm="RS256")
+                        return web.json_response({"Token": token, "scenario":scenario}, status=200)
+                    else:
+                        return web.json_response({"erro": "credenciais inválidas"}, status=401)
 
-    payload = {
-        "name": user.name,
-        "exp": datetime.datetime.now() + datetime.timedelta(seconds=TOKEN_EXPIRATION_SECONDS),
-        "iat": datetime.datetime.now()
-    }
-
-    token = jwt.encode(payload, signing_key, algorithm=algorithm)
-    return token.decode("utf-8") if isinstance(token, bytes) else token
-
-def api_autenticacao(username: str, password: str, cenario="RSA") -> str | None:
-    user = load_user_by_name(username)
-    if not user:
-        print("User not found.")
-        return None
-# client should send hashed password but hashing again to ensure no clear password storing 
-    hashed_input_pwd = hashlib.sha256(password.encode()).hexdigest() 
-    if hashed_input_pwd != user.pwd:
-        print("Invalid password.")
-        return None
-    
-    print("User credentials found")
-
-    token = generate_jwt(user, cenario)
-    save_user_token(user.name, token)
-    return token
-
-def load_key(filename):
-    with open(filename, "rb") as f:
-        return f.read()
-
+            except aiosqlite.Error as e:
+                return web.json_response({"error": f"Não foi possível conectar com o banco de dados: {str(e)}"}, status=500)
+    return web.json_response({"erro":"método POST não permitido"}, status=405)
 
 
 #%%
-em_claro = load_user_by_name("ningning")
-api_autenticacao(hashlib.sha256(em_claro.name.encode()).hexdigest() , hashlib.sha256(em_claro.pwd.encode()).hexdigest())
 
-test_username = hashlib.sha256(em_claro.name.encode()).hexdigest()
-test_password = hashlib.sha256(em_claro.pwd.encode()).hexdigest()
-
-print("\nTeste HMAC :")
-hmac_token = api_autenticacao(test_username, test_password, "HMAC")
-print("Generated HMAC token:", hmac_token)
-hmac_result = api_protegida(hmac_token, "HMAC")
-print("API_PROTEGIDA:", hmac_result)
-
-print("\nTeste RSA :")
-rsa_token = api_autenticacao(test_username, test_password, "RSA")
-print("Generated RSA token:", rsa_token)
-rsa_result = api_protegida(rsa_token, "RSA")
-print("API_PROTEGIDA:", rsa_result)
+async def main():
+    print(HMAC_SECRET)
 
 
-print("\nTeste RSA Expired token :")
-rsa_token = api_autenticacao(test_username, test_password, "RSA")
-print("Generated RSA token:", rsa_token)
-import time
-time.sleep(TOKEN_EXPIRATION_SECONDS+0.1)
-rsa_result = api_protegida(rsa_token, "RSA")
-print("API_PROTEGIDA:", rsa_result)
+if __name__=="__main__":
+    asyncio.run(main())

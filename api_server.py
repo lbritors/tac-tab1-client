@@ -122,3 +122,10 @@ async def handle_get(request):
         except aiosqlite.Error as e:
             return web.json_response({"error": f"Erro no banco de dados: {str(e)}"}, status=500)
 
+
+async def main():
+    print(HMAC_SECRET)
+
+
+if __name__=="__main__":
+    asyncio.run(main())

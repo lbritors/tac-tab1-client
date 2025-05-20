@@ -5,8 +5,9 @@ import os
 import aiohttp
 import asyncio
 
-from cryptography.hazmat.primitives.keywrap import aes_key_wrap_with_padding
 from dotenv import load_dotenv
+
+from api_server import HMAC_SECRET
 
 load_dotenv()
 
@@ -85,7 +86,9 @@ async def get_messages(session, token, scenario, api_url = API_URL):
 
 
 async def main():
-    await authenticate()
+    print(AUTH_URL)
+    print(API_URL)
+    print(HMAC_SECRET)
 
 
 if __name__=="__main__":
