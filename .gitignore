@@ -11,3 +11,5 @@ pycache/ *.py[cod] *$py.class
 Thumbs.db Desktop.ini
 
 .env *.env
+
+*.db

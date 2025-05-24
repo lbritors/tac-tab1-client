@@ -1,4 +1,5 @@
 import os
+import ssl
 
 from dotenv import load_dotenv
 
@@ -16,9 +17,10 @@ from auth_server import DB_PATH, RSA_PUB_KEY_FILE
 PORT = 5000
 API_DB_PATH = "database.db"
 PUB_KEY_FILE = "rsa_public.pem"
-CERT_FILE = "cert.pem"
 HMAC_KEY_FILE = "hmac.pem"
 HMAC_SECRET = os.getenv("HMAC_SECRET")
+CERT_FILE = "./public_certificate.pem"
+CERT_KEY_FILE = "./private_certif_key.pem"
 load_dotenv()
 
 async def init_db():
@@ -123,9 +125,23 @@ async def handle_get(request):
             return web.json_response({"error": f"Erro no banco de dados: {str(e)}"}, status=500)
 
 
-async def main():
-    print(HMAC_SECRET)
+async def run_server():
+    await init_db()
+    app = web.Application()
+    app.router.add_get("/messages", handle_get)
+    app.router.add_post("/messages", handle_post)
+
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ssl_context.load_cert_chain(certfile=CERT_FILE, keyfile=CERT_KEY_FILE)
+
+    run = web.AppRunner(app)
+    await run.setup()
+    site = web.TCPSite(run, "0.0.0.0", PORT, ssl_context=ssl_context)
+    await site.start()
+
+    print(f"Api protegida rodando na em localhost {PORT}")
+    await asyncio.Event.wait()
 
 
 if __name__=="__main__":
-    asyncio.run(main())
+    asyncio.run(run_server())
