@@ -84,6 +84,18 @@ def hash_password(password):
     key = base64.b64encode(kdf.derive(password.encode()))
     return f"{base64.b64encode(salt).decode()}: {key.decode()}"
 
+async def generate_token(username, scenario):
+    data = {
+        "exp": datetime.datetime.now() + datetime.timedelta(seconds=TOKEN_EXPIRATION_SECONDS),
+        "sub": username,
+        "iac": datetime.datetime.now()
+    }
+    if scenario == "hmac":
+        token = jwt.encode(data, HMAC_SECRET, algorithm="HS256")
+    else:
+        private_key = load_private_key()
+        token = jwt.encode(data, private_key, algorithm="RS256")
+    return token
 
 def verify_password(password, hash_pass):
     salt_b64, key_b64 = hash_pass.split(":")
@@ -96,6 +108,34 @@ def verify_password(password, hash_pass):
     )
     key = base64.b64encode(kdf.derive(password.encode())).decode()
     return key == key_b64
+
+async def handle_register(request):
+    if request.method == "POST":
+        try:
+            data = await request.json()
+        except json.JSONDecodeError as e:
+            return web.json_response({"erro":"JSON inválido"}, status=400)
+
+        username = data.get("username")
+        password = data.get("password")
+        scenario = data.get("scenario")
+        if scenario not in ["hmac", "rsa"]:
+            return web.json_response({"erro": "cenário inválido (use 'hmac' ou 'rsa'"}, status=400)
+        if not username or not password:
+            return web.json_response({"erro": "credenciais inválidas, faltam dados"}, status=400)
+        async with aiosqlite.connect(DB_PATH) as db:
+            try:
+               async with db.execute("SELECT username FROM users WHERE username = ?", (username,)) as cursor:
+                   if await cursor.fetchone():
+                       return web.json_response({"erro": "usuário já existe"}, status=409)
+                   password_hash = hash_password(password)
+                   await db.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (username, password_hash))
+                   await db.commit()
+                   token = await generate_token(username, scenario)
+                   return web.json_response({"message": "Usuário registrado com sucesso", "token": token, "scenario": scenario}, status=201)
+            except aiosqlite.Error as e:
+                return web.json_response({"erro": f"erro no banco de dados: {str(e)}"}, status=500)
+    return web.json_response({"erro": "método não permitido"},status=405)
 
 async def handle_login(request):
     if request.method == "POST":
@@ -119,20 +159,10 @@ async def handle_login(request):
                 """, (username,)) as cursor:
                     result = await cursor.fetchone()
                     if result and verify_password(result[0], password):
-                        data = {
-                            "exp": datetime.datetime.now() + datetime.timedelta(seconds=TOKEN_EXPIRATION_SECONDS),
-                            "sub": username,
-                            "iac": datetime.datetime.now()
-                        }
-                        if scenario == "hmac":
-                            token = jwt.encode(data, HMAC_SECRET, algorithm="HS256")
-                        else:
-                            private_key = load_private_key()
-                            token = jwt.encode(data, private_key, algorithm="RS256")
-                        return web.json_response({"Token": token, "scenario":scenario}, status=200)
+                        token = await generate_token(username, scenario)
+                        return web.json_response({"token": token, "cenário":scenario}, status = 200)
                     else:
                         return web.json_response({"erro": "credenciais inválidas"}, status=401)
-
             except aiosqlite.Error as e:
                 return web.json_response({"error": f"Não foi possível conectar com o banco de dados: {str(e)}"}, status=500)
     return web.json_response({"erro":"método POST não permitido"}, status=405)
