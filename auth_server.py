@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.keywrap import aes_key_wrap_with_padding
 from dotenv import load_dotenv
 
 
@@ -32,6 +33,8 @@ RSA_PRIV_KEY_FILE = "rsa_private.pem"
 RSA_ALGORITHM = "RS256"
 HMAC_ALGORITHM = "HS256"
 HMAC_SECRET = os.getenv("HMAC_SECRET")
+CERT_FILE = "./public_certificate.pem"
+CERT_KEY_FILE = "./private_certif_key.pem"
 
 
 async def init_db():
@@ -134,8 +137,27 @@ async def handle_login(request):
                 return web.json_response({"error": f"Não foi possível conectar com o banco de dados: {str(e)}"}, status=500)
     return web.json_response({"erro":"método POST não permitido"}, status=405)
 
+async def run_server():
+    await init_db()
+    if not (os.path.exists(RSA_PRIV_KEY_FILE) and os.path.exists(RSA_PUB_KEY_FILE)):
+        generate_rsa_keys()
 
-#%%
+    app = web.Application()
+    app.router.add_post("/auth_register", handle_register)
+    app.router.add_get("/auth_login", handle_login())
+
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ssl_context.load_cert_chain(certfile=CERT_FILE, keyfile=CERT_KEY_FILE)
+
+    run = web.AppRunner(app)
+    await run.setup()
+    site = web.TCPSite(run, "0.0.0.0", PORT, ssl_context=ssl_context)
+    await site.start()
+
+    print(f"Api de autenticação rodando na porta {PORT}")
+    await asyncio.Event().wait()
+
+
 
 async def main():
     print(HMAC_SECRET)

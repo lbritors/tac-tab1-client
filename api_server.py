@@ -140,7 +140,7 @@ async def run_server():
     await site.start()
 
     print(f"Api protegida rodando na em localhost {PORT}")
-    await asyncio.Event.wait()
+    await asyncio.Event().wait()
 
 
 if __name__=="__main__":
