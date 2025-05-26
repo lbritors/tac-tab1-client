@@ -12,16 +12,32 @@ from api_server import HMAC_SECRET
 load_dotenv()
 
 API_URL = os.getenv("API_URL")
-AUTH_URL = os.getenv("AUTH_URL")
+LOGIN_URL = os.getenv("LOGIN_URL")
+REGISTER_URL = os.getenv("REGISTER_URL")
 
-async def authenticate(session):
-
-    username = input("Digite seu login: ")
-    password = getpass.getpass("Digite sua senha: ")
-    scenario = input("Escolha o a forma de autenticação [hmac/rsa]: ").lower()
+async def register(session, username, password, scenario="rsa"):
+    auth_url = REGISTER_URL
     if scenario not in ["rsa", "hmac"]:
-        print("Cenário inválido. User 'hmac' ou 'rsa'.")
-        return None,None
+        return None, None, "Cenário inválido. User 'hmac' ou 'rsa'."
+    payload = {"username": username, "password": password, "scenario":scenario}
+    try:
+        async with session.post(auth_url, json=payload, ssl=False) as response:
+            if response.status == 201:
+                data = await response.json()
+                token = data.get("token")
+                scenario = data.get("scenario")
+                if token:
+                    return token, scenario, None
+                return None, None, "Token não encontrado na resposta!!"
+    except aiohttp.ClientError as e:
+        return None, None, f"Erro ao conectar ao servidor {e}"
+
+
+async def authenticate(session, username, password, scenario="rsa"):
+    auth_url = LOGIN_URL
+    if scenario not in ["hmac", "rsa"]:
+        return None, None, "Cenário inválido. Use 'hmac' ou 'rsa'."
+
     data = {
         "username": username,
         "password": password,
@@ -29,26 +45,22 @@ async def authenticate(session):
     }
 
     try:
-        async with session.post(AUTH_URL, json=data, ssl=False) as response:
+        async with session.post(auth_url, json=data, ssl=False) as response:
             if response.status == 200:
                 res = await response.json()
                 token = res.get("token")
                 scenario = res.get("scenario")
                 if token:
-                    print("Autenticação deu certo!")
-                    return token,scenario
-                else:
-                    print("Autenticação não deu certo!Token não encontrado na resposta")
-            else:
-                text = await response.text()
-                print(f"Erro na autenticação: {response.status} - {text} ")
+                    return token,scenario, None
+                return None, None, "Token não encontrado na resposta"
+            return None, None, f"Erro na autenticação: {response.status} - {await response.text()}"
     except aiohttp.ClientError as error:
-        print(f"Erro ao conectar ao servidor: {error}")
-    return None, None
+        return None, None, f"Erro ao conectar ao servidor: {error}"
 
 
-async def post_message(session, token, scenario, api_url = API_URL):
-    content = input("Digite a mensagem confidencial: ")
+async def post_message(session, token, scenario, content, api_url = API_URL):
+    if scenario not in ["hmac", "rsa"]:
+        return False, "Cenário inválido."
     data = {"content": content}
     headers = {
         "Authorization": f"Bearer {token}",
@@ -68,6 +80,8 @@ async def post_message(session, token, scenario, api_url = API_URL):
         print(f"Erro ao conectar à API: {error}")
 
 async def get_messages(session, token, scenario, api_url = API_URL):
+    if scenario not in ["hmac", "rsa"]:
+        return False, "Cenário inválido."
     headers = {
         "Authorization": f"Bearer {token}",
         "X-Auth-Scenario": scenario
@@ -82,14 +96,3 @@ async def get_messages(session, token, scenario, api_url = API_URL):
                 print(f"Erro ao recuperar mensagens : {response.status} - {text}")
     except aiohttp.ClientError as e:
         print(f"Erro ao conectar à API: {e}")
-
-
-
-async def main():
-    print(AUTH_URL)
-    print(API_URL)
-    print(HMAC_SECRET)
-
-
-if __name__=="__main__":
-    asyncio.run(main())
