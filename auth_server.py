@@ -174,7 +174,7 @@ async def run_server():
 
     app = web.Application()
     app.router.add_post("/auth_register", handle_register)
-    app.router.add_get("/auth_login", handle_login())
+    app.router.add_get("/auth_login", handle_login)
 
     ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ssl_context.load_cert_chain(certfile=CERT_FILE, keyfile=CERT_KEY_FILE)
