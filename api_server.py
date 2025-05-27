@@ -31,28 +31,42 @@ async def init_db():
                 user_id TEXT NOT NULL,
                 content TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
         """)
         await db.commit()
 
 def load_public_key():
     with open(PUB_KEY_FILE, "rb") as f:
-        return serialization.load_pem_public_key(f.read())
+        pub = serialization.load_pem_public_key(f.read())
+        print(pub)
+        return pub
 
 def validate_token(token, scenario = "hmac"):
     try:
         if scenario == "hmac":
-            payload= jwt.decode(token, HMAC_SECRET, algorithms = ["HS256"])
+            try:
+                payload = jwt.decode(token, HMAC_SECRET, algorithms=["HS256"])
+                return payload.get("sub"), None
+            except jwt.ExpiredSignatureError:
+                return None, "Token expirado"
+            except jwt.InvalidTokenError:
+                return None, "Token inválido"
         else:
             public_key = load_public_key()
-            payload = jwt.decode(token, public_key, algorithms = ["HS256"])
-        return payload.get("sub"), None
-    except jwt.ExpiredSignatureError:
-        return None, "Token expirado"
+            print(f"Chave pública usada para validar (RSA): {public_key}")
+            try:
+                payload = jwt.decode(token, public_key, algorithms = ["RS256"])
+                print(f"Token decodificado com RSA com sucesso: {payload}")  # Adicione esta linha
+                return payload.get("sub"), None
+            except jwt.ExpiredSignatureError:
+                return None, "Token expirado"
+            except jwt.InvalidTokenError:
+                return None, "Token inválido"
     except jwt.InvalidTokenError:
         return None, "Token inválido"
 
 def get_token(request):
-    auth_header = request.header.get("Authorization")
+    auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         return auth_header.split(" ")[1]
     return None
